@@ -1,0 +1,51 @@
+{
+  "name": "memeos-payroll",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "start:lan": "next start -H 0.0.0.0",
+    "dev:lan": "next dev -H 0.0.0.0",
+    "lan": "tsx scripts/lan.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "smoke": "tsx scripts/smoke.ts",
+    "compare-grace": "tsx scripts/compareGrace.ts",
+    "reset": "tsx scripts/reset.ts",
+    "preflight": "tsx scripts/preflight.ts",
+    "db:use": "tsx scripts/use-db.ts",
+    "db:copy": "node --no-warnings --import tsx scripts/copy-data.ts",
+    "db:secure": "tsx scripts/secure-supabase.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.2.1",
+    "bcryptjs": "^2.4.3",
+    "jose": "^5.9.6",
+    "next": "^15.1.4",
+    "pdfmake": "^0.2.15",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.10.5",
+    "@types/pdfmake": "^0.2.10",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "prisma": "^6.2.1",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

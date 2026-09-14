@@ -1,0 +1,430 @@
+// Internal payroll management system.
+//
+// SQLite is deliberate: one company, ~110 employees, a single monthly batch job,
+// and a requirement to retain history indefinitely. A single file is trivial to
+// back up and restore. Switching to Postgres later is a `provider` change plus a
+// migration - no application code depends on the engine.
+//
+// Prisma does not support native enums on SQLite, so coded fields are `String`
+// with their permitted values documented alongside.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// People and access
+// ---------------------------------------------------------------------------
+
+/// role: ADMIN | HR_ACCOUNTANT
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("HR_ACCOUNTANT")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs      AuditLog[]
+  lockedPeriods  PayrollPeriod[]   @relation("PeriodLockedBy")
+  imports        ImportBatch[]
+  ratesCreated   EmployeeRate[]
+  deductions     Deduction[]
+  extras         ExtraBonus[]
+  zeroPunchCalls ZeroPunchReview[]
+  unmatchedCalls UnmatchedBlock[]
+}
+
+/// scheduleType: OS | PS | NS | EXCEPTION
+/// exceptionRole: SALESMAN | MANAGER | SECURITY | DRIVER (only when scheduleType = EXCEPTION)
+/// status: ACTIVE | INACTIVE | ON_EXTENDED_LEAVE
+model Employee {
+  id           String  @id @default(cuid())
+  employeeCode String  @unique
+  /// Biometric device ID - the primary key for matching the monthly file.
+  deviceId     String? @unique
+
+  name          String
+  address       String?
+  contactNumber String?
+  /// Optional: not always known when someone is created from a punch file.
+  /// Only holiday pay depends on it - see isHolidayPayEligible.
+  joiningDate   DateTime?
+  position      String?
+
+  scheduleType  String
+  exceptionRole String?
+
+  esiApplicable Boolean @default(false)
+  pfApplicable  Boolean @default(false)
+
+  /// Reference data only - no disbursement integration. Admin-editable.
+  bankName          String?
+  bankAccountNumber String?
+  bankIfsc          String?
+
+  status             String    @default("ACTIVE")
+  expectedReturnDate DateTime?
+  leftOn             DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rates            EmployeeRate[]
+  attendanceDays   AttendanceDay[]
+  payrollLines     PayrollLine[]
+  deductions       Deduction[]
+  extras           ExtraBonus[]
+  zeroPunchReviews ZeroPunchReview[]
+  unmatchedBlocks  UnmatchedBlock[]
+
+  @@index([status])
+  @@index([scheduleType])
+}
+
+/// Never overwritten. Every change appends a row, so historical periods keep
+/// recalculating at the rate that was actually in force (spec 12.12).
+///
+/// A row is either hourly or a fixed monthly salary. The basis lives on the row,
+/// not the employee, so moving someone from hourly to salaried is a dated change
+/// like any other and older periods still calculate the way they were paid.
+model EmployeeRate {
+  id            String   @id @default(cuid())
+  employeeId    String
+  /// HOURLY | MONTHLY
+  payBasis      String   @default("HOURLY")
+  /// Rupees per payable hour. Unused (0) on a MONTHLY row.
+  hourlyRate    Float    @default(0)
+  /// Rupees for a full calendar month. Set only on a MONTHLY row.
+  monthlySalary Float?
+  effectiveFrom DateTime
+  note          String?
+  createdAt     DateTime @default(now())
+  createdById   String?
+
+  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation(fields: [createdById], references: [id])
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom])
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+model Holiday {
+  id        String   @id @default(cuid())
+  date      DateTime @unique
+  name      String
+  createdAt DateTime @default(now())
+}
+
+/// Single-row key/value store for Admin settings, e.g. the ESI wage threshold.
+/// No statutory default is seeded - the Admin sets it explicitly.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Payroll periods
+// ---------------------------------------------------------------------------
+
+/// status: DRAFT | LOCKED
+model PayrollPeriod {
+  id     String @id @default(cuid())
+  year   Int
+  month  Int
+  status String @default("DRAFT")
+
+  /// Snapshot of the threshold in force when the period was calculated.
+  esiWageThreshold Float?
+
+  lockedAt    DateTime?
+  lockedById  String?
+  reopenedAt  DateTime?
+  reopenCount Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lockedBy         User?             @relation("PeriodLockedBy", fields: [lockedById], references: [id])
+  imports          ImportBatch[]
+  attendanceDays   AttendanceDay[]
+  payrollLines     PayrollLine[]
+  unmatchedBlocks  UnmatchedBlock[]
+  zeroPunchReviews ZeroPunchReview[]
+  oneOffDeductions Deduction[]
+  extras           ExtraBonus[]
+  auditLogs        AuditLog[]
+
+  @@unique([year, month])
+}
+
+model ImportBatch {
+  id           String   @id @default(cuid())
+  periodId     String
+  fileName     String
+  /// SHA-256 of the upload, so the same file is not imported twice unnoticed.
+  fileHash     String
+  uploadedAt   DateTime @default(now())
+  uploadedById String?
+
+  /// JSON: per-sheet name / employee count / day-column count.
+  sheetSummary String
+  /// JSON: string[] of parser warnings.
+  warnings     String
+  blockCount   Int      @default(0)
+  matchedCount Int      @default(0)
+
+  period     PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  uploadedBy User?         @relation(fields: [uploadedById], references: [id])
+
+  unmatchedBlocks UnmatchedBlock[]
+
+  @@index([periodId])
+}
+
+/// One row per employee per calendar day: the raw punch as imported, plus the
+/// human decisions layered on it. Computed values are derived on read by the
+/// domain engine, and snapshotted onto PayrollLine when the period is locked.
+model AttendanceDay {
+  id         String   @id @default(cuid())
+  periodId   String
+  employeeId String
+  date       DateTime
+  dayOfMonth Int
+
+  // --- as imported, never mutated by the app -------------------------------
+  statusRaw         String?
+  status            String  @default("UNKNOWN")
+  rawInMinutes      Int?
+  rawOutMinutes     Int?
+  /// Device-computed columns. Captured for audit; never used in calculation.
+  deviceDurationRaw String?
+  deviceShiftRaw    String?
+
+  // --- human resolution (spec 12.4, 12.6, 12.7) ----------------------------
+  /// SANCTIONED_LEAVE | UNAUTHORIZED_ABSENCE | HALF_DAY | OTHER
+  resolutionTag            String?
+  resolutionNote           String?
+  paidLeaveMinutes         Int      @default(0)
+  manualWorkedMinutes      Int?
+  confirmedOtMinutes       Int      @default(0)
+  meritTicked              Boolean  @default(false)
+  grantPunctualityOverride Boolean  @default(false)
+  punctualityOverrideNote  String?
+  resolved                 Boolean  @default(false)
+  resolvedAt               DateTime?
+  resolvedById             String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  period   PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  employee Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, employeeId, date])
+  @@index([periodId, resolved])
+  @@index([employeeId, date])
+}
+
+/// Punch data that could not be attributed to a known employee.
+/// Distinct from ZeroPunchReview: here the data exists but the person is unknown.
+/// status: PENDING | MAPPED | CREATED | IGNORED
+model UnmatchedBlock {
+  id            String @id @default(cuid())
+  periodId      String
+  importBatchId String
+
+  sheetName String
+  rowIndex  Int
+  deviceId  String
+  name      String
+  /// JSON: the ParsedDay[] for this block, held until it is resolved.
+  rawDays   String
+
+  status             String    @default("PENDING")
+  resolvedEmployeeId String?
+  resolvedAt         DateTime?
+  resolvedById       String?
+
+  createdAt DateTime @default(now())
+
+  period           PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  importBatch      ImportBatch   @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  resolvedEmployee Employee?     @relation(fields: [resolvedEmployeeId], references: [id])
+  resolvedBy       User?         @relation(fields: [resolvedById], references: [id])
+
+  @@index([periodId, status])
+}
+
+/// A known active employee with no punch data at all for the period.
+/// Distinct from UnmatchedBlock: here the person is known but the data is absent.
+/// decision: LEFT_INACTIVE | EXTENDED_LEAVE | KEEP_ACTIVE
+model ZeroPunchReview {
+  id         String @id @default(cuid())
+  periodId   String
+  employeeId String
+
+  decision           String?
+  expectedReturnDate DateTime?
+  note               String?
+  decidedAt          DateTime?
+  decidedById        String?
+
+  createdAt DateTime @default(now())
+
+  period    PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  employee  Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  decidedBy User?         @relation(fields: [decidedById], references: [id])
+
+  @@unique([periodId, employeeId])
+  @@index([periodId, decision])
+}
+
+// ---------------------------------------------------------------------------
+// Money in and out
+// ---------------------------------------------------------------------------
+
+/// kind: ONE_OFF (tied to periodId) | RECURRING (runs until stopped)
+model Deduction {
+  id         String @id @default(cuid())
+  employeeId String
+  kind       String
+  amount     Float
+  reason     String
+
+  /// One-off only.
+  periodId  String?
+  /// Recurring only. endDate is set when the deduction is stopped.
+  startDate DateTime?
+  endDate   DateTime?
+  active    Boolean   @default(true)
+
+  createdAt   DateTime @default(now())
+  createdById String?
+
+  employee  Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period    PayrollPeriod? @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  createdBy User?          @relation(fields: [createdById], references: [id])
+
+  @@index([employeeId, kind, active])
+  @@index([periodId])
+}
+
+/// Discretionary payment, unrelated to hours (festival bonus, appreciation).
+model ExtraBonus {
+  id          String   @id @default(cuid())
+  employeeId  String
+  periodId    String
+  amount      Float
+  reason      String
+  createdAt   DateTime @default(now())
+  createdById String?
+
+  employee  Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period    PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  createdBy User?         @relation(fields: [createdById], references: [id])
+
+  @@index([periodId, employeeId])
+}
+
+/// The calculated result for one employee in one period.
+/// exclusionReason: LEFT_INACTIVE | EXTENDED_LEAVE (null when in the payroll run)
+model PayrollLine {
+  id         String @id @default(cuid())
+  periodId   String
+  employeeId String
+
+  inPayroll       Boolean @default(true)
+  exclusionReason String?
+
+  workedHours      Float @default(0)
+  overtimeHours    Float @default(0)
+  paidLeaveHours   Float @default(0)
+  payableHours     Float @default(0)
+  punctualityHours Float @default(0)
+  meritHours       Float @default(0)
+
+  daysPresent    Int @default(0)
+  daysAbsent     Int @default(0)
+  daysFlagged    Int @default(0)
+  daysUnresolved Int @default(0)
+  daysPunctual   Int @default(0)
+  daysMerit      Int @default(0)
+  weeklyOffDays  Int @default(0)
+
+  // Leave, by the reviewer's categorisation - snapshotted so the analytics
+  // history stays accurate even after a day is re-tagged in a reopened period.
+  daysSanctionedLeave     Int @default(0)
+  daysUnauthorisedAbsence Int @default(0)
+  daysHalfDay             Int @default(0)
+  daysOtherResolution     Int @default(0)
+  daysPaidLeave           Int @default(0)
+
+  basePay        Float @default(0)
+  punctualityPay Float @default(0)
+  meritPay       Float @default(0)
+  holidayPay     Float @default(0)
+  extraTotal     Float @default(0)
+  grossPay       Float @default(0)
+
+  esi     Float @default(0)
+  pf      Float @default(0)
+  netPay  Float @default(0)
+
+  oneOffDeductionTotal    Float @default(0)
+  recurringDeductionTotal Float @default(0)
+  deductionTotal          Float @default(0)
+  finalPay                Float @default(0)
+
+  /// JSON: string[] of warnings surfaced at calculation time.
+  warnings     String   @default("[]")
+  calculatedAt DateTime @default(now())
+
+  period   PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  employee Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, employeeId])
+  @@index([periodId, inPayroll])
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+/// Field-level change history. Written for every mutation made while a period
+/// is reopened, and for the lock/reopen actions themselves (spec 8.1 step 13).
+model AuditLog {
+  id     String   @id @default(cuid())
+  at     DateTime @default(now())
+  userId String?
+
+  /// e.g. PERIOD_LOCK, PERIOD_REOPEN, FIELD_UPDATE, IMPORT, RESOLVE_FLAG
+  action     String
+  entityType String
+  entityId   String
+  field      String?
+  oldValue   String?
+  newValue   String?
+  note       String?
+
+  periodId String?
+
+  user   User?          @relation(fields: [userId], references: [id])
+  period PayrollPeriod? @relation(fields: [periodId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([periodId, at])
+  @@index([at])
+}

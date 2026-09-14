@@ -1,0 +1,350 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens, taken from the BIPAY payroll design system.
+ *
+ * Three things define the look, and they are what to preserve if any of this
+ * is retuned:
+ *
+ *   1. Quiet chrome, loud numbers. Surfaces are white on light grey with a
+ *      hairline edge and almost no shadow; the colour budget is spent on
+ *      figures and status, not on containers.
+ *   2. Blue is the accent - links, active tabs, progress, emphasis numerals.
+ *      The committing button is near-black, not blue, so "save" never competes
+ *      with "this is the important number".
+ *   3. Tight radii. 8px on cards, 6px on controls. The previous 16px reads
+ *      consumer; this system is a working tool.
+ *
+ * Contrast: every solid pill here clears 4.5:1 for its own text. The template
+ * sets white on gold, which measures 2.2:1 - so the gold pill keeps the fill
+ * and takes dark ink instead. Same shape, actually readable.
+ *
+ * Chart series hues are unchanged and still validated against white - see
+ * src/components/charts/tokens.ts before touching them.
+ */
+@theme {
+  /* accent */
+  --color-brand: #2563eb;
+  --color-brand-strong: #1d4ed8;
+  --color-brand-soft: #eff6ff;
+  --color-brand-ring: #bfdbfe;
+
+  /* the committing action */
+  --color-action: #1e293b;
+  --color-action-strong: #0f172a;
+
+  /* surfaces */
+  --color-canvas: #f1f2f4;
+  --color-shell: #fafbfc;
+  --color-hairline: #e6e8ec;
+  --color-field: #d7dbe1;
+  --color-thead: #f7f8f9;
+  --color-well: #f3f4f6;
+  --color-chip: #e1e4e9;
+
+  /* ink */
+  --color-ink: #111827;
+  --color-ink-soft: #4b5563;
+  --color-ink-muted: #8b93a1;
+
+  /* status */
+  --color-good: #15803d;
+  --color-good-soft: #dcfce7;
+  --color-warn: #f2c14e;
+  --color-warn-ink: #4a3005;
+  --color-warn-soft: #fef7e6;
+  --color-warn-ring: #f5e0ab;
+  --color-bad: #dc2626;
+  --color-bad-soft: #fee2e2;
+
+  --radius-card: 0.5rem;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+  }
+  a {
+    color: inherit;
+  }
+}
+
+@layer components {
+  /* --- surfaces --------------------------------------------------------- */
+  .card {
+    @apply rounded-lg border border-hairline bg-white;
+    box-shadow: 0 1px 2px rgb(17 24 39 / 0.03);
+  }
+  .card-head {
+    @apply flex flex-wrap items-baseline justify-between gap-3 px-5 pb-3 pt-4;
+  }
+  .card-title {
+    @apply text-sm font-semibold tracking-tight text-ink;
+  }
+  .card-note {
+    @apply text-xs text-ink-muted;
+  }
+  /* --- type ------------------------------------------------------------- */
+  .page-title {
+    @apply text-xl font-semibold tracking-tight text-ink;
+  }
+  .section-title {
+    @apply text-[15px] font-semibold tracking-tight text-ink;
+  }
+  /* the figure in a stat: big, tight, and the only thing shouting */
+  .stat-value {
+    @apply text-[26px] font-bold leading-none tracking-tight text-ink;
+  }
+  .stat-label {
+    @apply text-[13px] text-ink-soft;
+  }
+  .stat-note {
+    @apply text-xs text-ink-muted;
+  }
+
+  /* --- controls --------------------------------------------------------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-field
+           bg-white px-3 py-1.5 text-[13px] font-medium text-ink-soft transition
+           hover:border-ink-muted hover:text-ink
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-action bg-action text-white hover:border-action-strong
+           hover:bg-action-strong hover:text-white;
+  }
+  .btn-accent {
+    @apply border-brand bg-brand text-white hover:border-brand-strong
+           hover:bg-brand-strong hover:text-white;
+  }
+  .btn-subtle {
+    @apply border-transparent bg-well text-ink-soft hover:bg-hairline hover:text-ink;
+  }
+  .btn-danger {
+    @apply border-bad bg-bad text-white hover:bg-red-700 hover:text-white;
+  }
+  .btn-ghost {
+    @apply border-transparent bg-transparent hover:bg-well;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-field bg-white px-3 py-2 text-[13px] text-ink
+           outline-none transition placeholder:text-ink-muted
+           focus:border-brand focus:ring-2 focus:ring-brand-ring
+           disabled:bg-well disabled:text-ink-muted;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-medium text-ink-soft;
+  }
+  /* the grey aside the template parks to the right of a field's label */
+  .field-hint {
+    @apply text-xs text-ink-muted;
+  }
+
+  /* --- pills ------------------------------------------------------------ */
+  .pill {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .pill-brand {
+    @apply bg-brand text-white;
+  }
+  .pill-good {
+    @apply bg-good text-white;
+  }
+  .pill-warn {
+    @apply bg-warn text-warn-ink;
+  }
+  .pill-bad {
+    @apply bg-bad text-white;
+  }
+  .pill-neutral {
+    @apply bg-chip text-ink-soft;
+  }
+  /* quieter variants, for a pill that is a count rather than a state */
+  .pill-soft-brand {
+    @apply bg-brand-soft text-brand-strong;
+  }
+  .pill-soft-warn {
+    @apply bg-warn-soft text-warn-ink;
+  }
+  .pill-soft-good {
+    @apply bg-good-soft text-good;
+  }
+
+  /* --- alerts ----------------------------------------------------------- */
+  .alert {
+    @apply rounded-lg border px-4 py-3 text-[13px];
+  }
+  .alert-info {
+    @apply border-brand-ring bg-brand-soft text-ink-soft;
+  }
+  .alert-warn {
+    @apply border-warn-ring bg-warn-soft text-warn-ink;
+  }
+  .alert-bad {
+    @apply border-red-200 bg-bad-soft text-red-800;
+  }
+  .alert-good {
+    @apply border-green-200 bg-good-soft text-green-800;
+  }
+  .alert-title {
+    @apply mb-0.5 block font-semibold text-ink;
+  }
+
+  /* --- tabs ------------------------------------------------------------- */
+  .tabs {
+    @apply flex flex-wrap items-center gap-6 border-b border-hairline;
+  }
+  .tab {
+    @apply -mb-px border-b-2 border-transparent pb-2.5 text-[13px] text-ink-muted transition
+           hover:text-ink;
+  }
+  .tab-active {
+    @apply border-brand font-medium text-ink;
+  }
+
+  /* --- tables ----------------------------------------------------------- */
+  .table {
+    @apply w-full border-collapse text-[13px];
+  }
+  .table th {
+    @apply border-y border-hairline bg-thead px-5 py-2.5 text-left text-xs font-medium
+           text-ink-soft;
+  }
+  .table td {
+    @apply border-b border-hairline px-5 py-3 text-ink-soft;
+  }
+  .table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .table tbody tr {
+    @apply transition hover:bg-thead;
+  }
+  .num {
+    @apply text-right tabular-nums;
+  }
+
+  /* --- odds and ends ---------------------------------------------------- */
+  .stat-icon {
+    @apply grid h-9 w-9 shrink-0 place-items-center rounded-md;
+  }
+  /* the grey square the template puts behind a row icon */
+  .icon-tile {
+    @apply grid h-8 w-8 shrink-0 place-items-center rounded-md bg-well text-ink-soft;
+  }
+  .progress {
+    @apply h-1.5 w-full overflow-hidden rounded-full bg-well;
+  }
+  .progress > span {
+    @apply block h-full rounded-full bg-brand;
+  }
+
+  /* --- motion ----------------------------------------------------------- */
+  /*
+   * Two states are worth animating and no others: working, and finished.
+   *
+   * There is deliberately no percentage anywhere. A server action sends one
+   * answer when it is done - it cannot report progress partway - so a bar that
+   * filled steadily would be inventing a number. The sweeping bar below says
+   * "working, length unknown", which is the truth, and the tick draws itself
+   * only when a real result has come back.
+   */
+  /* Announced to a screen reader, invisible to everyone else. */
+  .sr-only {
+    @apply absolute h-px w-px overflow-hidden whitespace-nowrap border-0 p-0;
+    clip: rect(0, 0, 0, 0);
+  }
+  .spinner {
+    @apply inline-block h-3.5 w-3.5 shrink-0 rounded-full border-2 border-current
+           border-r-transparent align-[-2px];
+    animation: spin 0.6s linear infinite;
+  }
+  .sweep {
+    @apply relative h-1 w-full overflow-hidden rounded-full bg-well;
+  }
+  .sweep > span {
+    @apply absolute inset-y-0 left-0 w-1/3 rounded-full bg-brand;
+    animation: sweep 1.15s ease-in-out infinite;
+  }
+  .animate-rise {
+    animation: rise 0.28s ease-out both;
+  }
+  .animate-pop {
+    animation: pop 0.34s cubic-bezier(0.2, 0.8, 0.3, 1.2) both;
+  }
+  /* The tick draws itself along its own stroke. */
+  .check-draw path {
+    stroke-dasharray: 26;
+    stroke-dashoffset: 26;
+    animation: draw 0.4s 0.08s ease-out forwards;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes sweep {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(410%);
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  60% {
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Someone who has asked their system for less motion still gets every state,
+   just without the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .sweep > span,
+  .animate-rise,
+  .animate-pop,
+  .check-draw path {
+    animation: none !important;
+  }
+  .animate-rise,
+  .animate-pop {
+    opacity: 1;
+    transform: none;
+  }
+  .check-draw path {
+    stroke-dashoffset: 0;
+  }
+  .sweep > span {
+    width: 100%;
+    opacity: 0.35;
+  }
+}
