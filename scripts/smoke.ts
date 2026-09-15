@@ -6,10 +6,10 @@
  *
  *   npm run smoke -- "C:/path/to/WorkDurationReport july.xls" 2026 7
  *
- * It writes to whatever DATABASE_URL points at, so point it at a scratch copy
- * rather than live payroll:
+ * It writes to whatever DATABASE_URL points at - normally live payroll on
+ * Supabase - so point it at a separate, empty Supabase project first:
  *
- *   DATABASE_URL="file:./scratch.db" npm run smoke -- "...\export.xls" 2026 7
+ *   DATABASE_URL="postgres://...scratch project..." npm run smoke -- "...\export.xls" 2026 7
  */
 
 import { existsSync, readFileSync } from 'node:fs';

@@ -27,7 +27,7 @@ const db = new PrismaClient();
 async function main() {
   const url = process.env.DATABASE_URL ?? '';
   if (!url.startsWith('postgres')) {
-    console.error('DATABASE_URL is not Postgres. Run `npm run db:use -- supabase` first.');
+    console.error('DATABASE_URL is not a Postgres connection string. See .env.example.');
     process.exit(1);
   }
 
@@ -36,7 +36,7 @@ async function main() {
   );
 
   if (tables.length === 0) {
-    console.error('No tables in the public schema. Run `npm run db:use -- supabase` first.');
+    console.error('No tables in the public schema. Run `npx prisma db push` first.');
     process.exit(1);
   }
 

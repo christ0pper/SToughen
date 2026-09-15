@@ -122,8 +122,9 @@ period, looking someone up, approving.
 PC is on the phone at the next refresh. There is no copy to reconcile and no
 offline mode: no PC, no app.
 
-**Back up `prisma/payroll.db`.** Remote access adds ways in; it adds nothing to
-recover a lost file. Copy it somewhere off the machine on a schedule.
+**Back up the database.** Payroll lives in Supabase, whose free plan keeps no
+backups. Remote access adds ways in; it adds nothing to recover lost data. Take
+a `pg_dump` against `DIRECT_URL` on a schedule and keep it off this PC.
 
 **Revoking someone** is done in Cloudflare Access, and takes effect immediately
 — faster and more complete than disabling their account in the app, because they

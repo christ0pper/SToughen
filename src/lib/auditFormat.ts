@@ -77,6 +77,7 @@ export const ACTION_LABELS: Record<string, string> = {
   PERIOD_LOCK: 'Period locked',
   PERIOD_REOPEN: 'Period reopened',
   PERIOD_RECALCULATE: 'Recalculated',
+  PERIOD_DELETE: 'Period deleted',
   IMPORT: 'File imported',
   FIELD_UPDATE: 'Field changed',
   RESOLVE_FLAG: 'Flag resolved',
@@ -92,7 +93,7 @@ export const ACTION_LABELS: Record<string, string> = {
 };
 
 /** The actions worth flagging in a list that is mostly routine. */
-export const SIGNIFICANT_ACTIONS = new Set(['PERIOD_LOCK', 'PERIOD_REOPEN', 'RATE_CHANGE']);
+export const SIGNIFICANT_ACTIONS = new Set(['PERIOD_LOCK', 'PERIOD_REOPEN', 'PERIOD_DELETE', 'RATE_CHANGE']);
 
 /** Reads an action code as a person would say it. */
 export function actionLabel(action: string): string {

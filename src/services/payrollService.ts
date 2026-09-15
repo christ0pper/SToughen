@@ -169,30 +169,31 @@ export async function calculateEmployee(
   context: PeriodContext,
   employee: Employee,
 ): Promise<EmployeePeriodDetail> {
-  const attendance = await db.attendanceDay.findMany({
-    where: { periodId: context.periodId, employeeId: employee.id },
-    orderBy: { dayOfMonth: 'asc' },
-  });
-
-  const review = await db.zeroPunchReview.findUnique({
-    where: { periodId_employeeId: { periodId: context.periodId, employeeId: employee.id } },
-  });
+  // Independent reads, sent together: over the network to Supabase each one is a
+  // round trip, and one after another they were most of a recalculation's time.
+  const [attendance, review, rates, extras, { oneOff, recurring }] = await Promise.all([
+    db.attendanceDay.findMany({
+      where: { periodId: context.periodId, employeeId: employee.id },
+      orderBy: { dayOfMonth: 'asc' },
+    }),
+    db.zeroPunchReview.findUnique({
+      where: { periodId_employeeId: { periodId: context.periodId, employeeId: employee.id } },
+    }),
+    db.employeeRate.findMany({
+      where: { employeeId: employee.id },
+      orderBy: { effectiveFrom: 'asc' },
+    }),
+    db.extraBonus.findMany({
+      where: { periodId: context.periodId, employeeId: employee.id },
+    }),
+    deductionsFor(employee.id, context),
+  ]);
 
   const excluded =
     review?.decision === 'LEFT_INACTIVE' || review?.decision === 'EXTENDED_LEAVE'
       ? review.decision
       : null;
 
-  const rates = await db.employeeRate.findMany({
-    where: { employeeId: employee.id },
-    orderBy: { effectiveFrom: 'asc' },
-  });
-
-  const extras = await db.extraBonus.findMany({
-    where: { periodId: context.periodId, employeeId: employee.id },
-  });
-
-  const { oneOff, recurring } = await deductionsFor(employee.id, context);
   const rateHistory = toRateHistory(rates);
 
   // A salary outranks the schedule: a salaried manager is paid their salary, not
@@ -251,6 +252,74 @@ export interface PeriodCalculationSummary {
   pendingZeroPunch: number;
 }
 
+/**
+ * How many employees are worked on at once. Matches `connection_limit` in the
+ * connection string: more would only queue for a connection.
+ */
+const EMPLOYEE_CONCURRENCY = 5;
+
+/** Runs `work` over `items` a few at a time, returning results in input order. */
+async function inBatches<T, R>(items: T[], work: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += EMPLOYEE_CONCURRENCY) {
+    results.push(...(await Promise.all(items.slice(i, i + EMPLOYEE_CONCURRENCY).map(work))));
+  }
+  return results;
+}
+
+/** One employee's calculation, snapshotted to their PayrollLine. */
+async function calculateAndStore(context: PeriodContext, employee: Employee): Promise<EmployeePeriodDetail> {
+  const detail = await calculateEmployee(context, employee);
+  const { result } = detail;
+  const { periodId } = context;
+
+  const data = {
+    inPayroll: detail.inPayroll,
+    exclusionReason: detail.exclusionReason,
+    workedHours: result.workedHours,
+    overtimeHours: result.overtimeHours,
+    paidLeaveHours: result.paidLeaveHours,
+    payableHours: result.payableHours,
+    punctualityHours: result.punctualityHours,
+    meritHours: result.meritHours,
+    daysPresent: result.daysPresent,
+    daysAbsent: result.daysAbsent,
+    daysFlagged: result.daysFlagged,
+    daysUnresolved: result.daysUnresolved,
+    daysPunctual: result.daysPunctual,
+    daysMerit: result.daysMerit,
+    weeklyOffDays: result.weeklyOffDays,
+    daysSanctionedLeave: result.daysSanctionedLeave,
+    daysUnauthorisedAbsence: result.daysUnauthorisedAbsence,
+    daysHalfDay: result.daysHalfDay,
+    daysOtherResolution: result.daysOtherResolution,
+    daysPaidLeave: result.daysPaidLeave,
+    basePay: result.basePay,
+    punctualityPay: result.punctualityPay,
+    meritPay: result.meritPay,
+    holidayPay: result.holidayPay,
+    extraTotal: result.extraTotal,
+    grossPay: result.grossPay,
+    esi: result.esi,
+    pf: result.pf,
+    netPay: result.netPay,
+    oneOffDeductionTotal: result.oneOffDeductionTotal,
+    recurringDeductionTotal: result.recurringDeductionTotal,
+    deductionTotal: result.deductionTotal,
+    finalPay: result.finalPay,
+    warnings: JSON.stringify(result.warnings),
+    calculatedAt: new Date(),
+  };
+
+  await db.payrollLine.upsert({
+    where: { periodId_employeeId: { periodId, employeeId: employee.id } },
+    create: { periodId, employeeId: employee.id, ...data },
+    update: data,
+  });
+
+  return detail;
+}
+
 /** Recalculate every employee in the period and snapshot the results. */
 export async function calculatePeriod(
   periodId: string,
@@ -276,59 +345,15 @@ export async function calculatePeriod(
   let unresolvedFlags = 0;
   let excluded = 0;
 
-  for (const employee of employees) {
-    const detail = await calculateEmployee(context, employee);
-    const { result } = detail;
-
+  // Each employee is independent - their own reads, their own line - so a few
+  // run at once. Totals are summed after, so the order they finish in is moot.
+  const details = await inBatches(employees, (employee) => calculateAndStore(context, employee));
+  for (const detail of details) {
     if (!detail.inPayroll) excluded += 1;
     else {
-      totalFinalPay += result.finalPay;
-      unresolvedFlags += result.daysUnresolved;
+      totalFinalPay += detail.result.finalPay;
+      unresolvedFlags += detail.result.daysUnresolved;
     }
-
-    const data = {
-      inPayroll: detail.inPayroll,
-      exclusionReason: detail.exclusionReason,
-      workedHours: result.workedHours,
-      overtimeHours: result.overtimeHours,
-      paidLeaveHours: result.paidLeaveHours,
-      payableHours: result.payableHours,
-      punctualityHours: result.punctualityHours,
-      meritHours: result.meritHours,
-      daysPresent: result.daysPresent,
-      daysAbsent: result.daysAbsent,
-      daysFlagged: result.daysFlagged,
-      daysUnresolved: result.daysUnresolved,
-      daysPunctual: result.daysPunctual,
-      daysMerit: result.daysMerit,
-      weeklyOffDays: result.weeklyOffDays,
-      daysSanctionedLeave: result.daysSanctionedLeave,
-      daysUnauthorisedAbsence: result.daysUnauthorisedAbsence,
-      daysHalfDay: result.daysHalfDay,
-      daysOtherResolution: result.daysOtherResolution,
-      daysPaidLeave: result.daysPaidLeave,
-      basePay: result.basePay,
-      punctualityPay: result.punctualityPay,
-      meritPay: result.meritPay,
-      holidayPay: result.holidayPay,
-      extraTotal: result.extraTotal,
-      grossPay: result.grossPay,
-      esi: result.esi,
-      pf: result.pf,
-      netPay: result.netPay,
-      oneOffDeductionTotal: result.oneOffDeductionTotal,
-      recurringDeductionTotal: result.recurringDeductionTotal,
-      deductionTotal: result.deductionTotal,
-      finalPay: result.finalPay,
-      warnings: JSON.stringify(result.warnings),
-      calculatedAt: new Date(),
-    };
-
-    await db.payrollLine.upsert({
-      where: { periodId_employeeId: { periodId, employeeId: employee.id } },
-      create: { periodId, employeeId: employee.id, ...data },
-      update: data,
-    });
   }
 
   const pendingUnmatched = await db.unmatchedBlock.count({
@@ -404,15 +429,21 @@ export async function getFlaggedDays(
     ).map((row) => row.employeeId),
   );
 
+  // Batched rather than one employee at a time; results come back in name order.
+  const perEmployee = await inBatches(
+    employees.filter((employee) => !excluded.has(employee.id)),
+    async (employee) => ({
+      employee,
+      attendance: await db.attendanceDay.findMany({
+        where: { periodId, employeeId: employee.id },
+        orderBy: { dayOfMonth: 'asc' },
+      }),
+    }),
+  );
+
   const rows: FlaggedDayRow[] = [];
 
-  for (const employee of employees) {
-    if (excluded.has(employee.id)) continue;
-
-    const attendance = await db.attendanceDay.findMany({
-      where: { periodId, employeeId: employee.id },
-      orderBy: { dayOfMonth: 'asc' },
-    });
+  for (const { employee, attendance } of perEmployee) {
     const byDay = new Map(attendance.map((row) => [row.dayOfMonth, row]));
     const computations = buildDayComputations(context, employee, attendance);
 

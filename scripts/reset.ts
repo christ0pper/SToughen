@@ -10,7 +10,8 @@
  *
  *   npm run reset -- --yes
  *
- * There is no undo. Copy prisma/payroll.db somewhere first.
+ * There is no undo, and Supabase's free plan keeps no backups. Take one first
+ * (pg_dump against DIRECT_URL), and check DATABASE_URL is the database you mean.
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -34,7 +35,8 @@ async function main() {
     console.log(`  ${periods} payroll period(s)`);
     console.log(`  ${audits} audit entr(ies)`);
     console.log('\nSign-in accounts and app settings are kept.');
-    console.log('\nBack up prisma/payroll.db, then re-run with:  npm run reset -- --yes');
+    console.log('\nWith the usual .env this is the live Supabase database everyone uses.');
+    console.log('Back it up (pg_dump against DIRECT_URL), then re-run with:  npm run reset -- --yes');
     return;
   }
 

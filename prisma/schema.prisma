@@ -1,20 +1,23 @@
 // Internal payroll management system.
 //
-// SQLite is deliberate: one company, ~110 employees, a single monthly batch job,
-// and a requirement to retain history indefinitely. A single file is trivial to
-// back up and restore. Switching to Postgres later is a `provider` change plus a
-// migration - no application code depends on the engine.
+// Postgres on Supabase. It began on SQLite and moved when two people in different
+// places needed the same live data; the move was the `provider` line and a data
+// copy, because no application code depends on the engine.
 //
-// Prisma does not support native enums on SQLite, so coded fields are `String`
-// with their permitted values documented alongside.
+// Coded fields are `String` with their permitted values documented alongside -
+// a leftover from SQLite, which has no native enums, kept so the schema stays
+// engine-neutral.
+//
+// After adding a table: `npx prisma db push`, then `npm run db:secure`.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // Supabase session pooler (5432), connection_limit=5 - the app
+  directUrl = env("DIRECT_URL")   // session pooler (5432) - what `prisma db push` uses
 }
 
 // ---------------------------------------------------------------------------

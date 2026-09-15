@@ -31,6 +31,18 @@ const ADMIN_NAME = process.env.ADMIN_NAME ?? 'Owner (Admin)';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? '123';
 
 async function main() {
+  // This repo ships the company's real database. On a clone that already has an
+  // Admin, running the seed with its defaults would quietly add a guessable
+  // 123/123 account to live payroll data - so it only acts on an existing
+  // database when someone has named the account on purpose.
+  const admins = await db.user.count({ where: { role: 'ADMIN', isActive: true } });
+  if (admins > 0 && !process.env.ADMIN_EMAIL) {
+    console.log(`This database already has ${admins} active Admin account(s) - nothing to do.`);
+    console.log('To add another, name it:  ADMIN_EMAIL=you@company.local ADMIN_PASSWORD=\'...\' npm run db:seed');
+    console.log('Or create it in the app: Settings -> Accounts.');
+    return;
+  }
+
   const existing = await db.user.findUnique({ where: { email: ADMIN_EMAIL } });
 
   await db.user.upsert({

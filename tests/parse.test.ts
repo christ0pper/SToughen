@@ -13,7 +13,7 @@ const JULY = { year: 2025, month: 7, dayCount: 31 };
 const SHEET1: FixtureEmployee[] = [
   {
     deviceId: '2',
-    name: 'BALKISHORE RAM',
+    name: 'ARJUN MEHRA',
     days: {
       1: { status: 'P', inTime: '08:58', outTime: '18:04', duration: '09:06' },
       2: { status: 'P', inTime: '09:14', outTime: '18:00', duration: '08:46' },
@@ -66,7 +66,7 @@ describe('workbook structure', () => {
     const { result } = parseFixture();
     const employee = result.employees[0];
     expect(employee.deviceId).toBe('2');
-    expect(employee.name).toBe('BALKISHORE RAM');
+    expect(employee.name).toBe('ARJUN MEHRA');
     expect(employee.deviceSummaryRaw).toMatch(/Total Duration/);
   });
 
@@ -220,7 +220,7 @@ describe('quirks of the real device export', () => {
   it('reads the month off the reporting range, not the "Printed On" stamp', () => {
     // The report covers July but is printed in August. Matching the wrong line
     // would import a month of attendance against the wrong period.
-    const result = parseNamedHeader([{ deviceId: '2', name: 'BALKISHORE RAM' }]);
+    const result = parseNamedHeader([{ deviceId: '2', name: 'ARJUN MEHRA' }]);
     expect(result.detectedPeriod).toEqual({ year: 2026, month: 7 });
   });
 
@@ -228,7 +228,7 @@ describe('quirks of the real device export', () => {
     // A device with no name for an ID prints "158 : 158". That is a real person
     // with real punches, and dropping the block loses their whole month.
     const result = parseNamedHeader([
-      { deviceId: '2', name: 'BALKISHORE RAM' },
+      { deviceId: '2', name: 'ARJUN MEHRA' },
       { deviceId: '158', name: '158', days: { 1: { status: 'P', inTime: '22:00', outTime: '06:00', shift: 'NS' } } },
     ]);
 
@@ -252,7 +252,7 @@ describe('quirks of the real device export', () => {
     // "12 : 30" on an InTime row must not become device 12 named "30". The
     // relaxation above applies only to a row carrying the "Employee:" label.
     const result = parseNamedHeader([
-      { deviceId: '2', name: 'BALKISHORE RAM', days: { 1: { status: 'P', inTime: '12:30', outTime: '21:30' } } },
+      { deviceId: '2', name: 'ARJUN MEHRA', days: { 1: { status: 'P', inTime: '12:30', outTime: '21:30' } } },
     ]);
     expect(result.employees).toHaveLength(1);
     expect(result.employees[0].deviceId).toBe('2');
@@ -260,8 +260,8 @@ describe('quirks of the real device export', () => {
 
   it('reports the day span and the device shift labels it saw', () => {
     const result = parseNamedHeader([
-      { deviceId: '16', name: 'JOBY MICHEL', days: { 1: { status: 'P', shift: 'Sam' } } },
-      { deviceId: '157', name: 'SAMUAL P O', days: { 1: { status: 'P', shift: 'NS' } } },
+      { deviceId: '16', name: 'KIRAN THOMAS', days: { 1: { status: 'P', shift: 'Sam' } } },
+      { deviceId: '157', name: 'VINOD K R', days: { 1: { status: 'P', shift: 'NS' } } },
     ]);
     expect(result.maxDay).toBe(31);
     // "Sam" and "NS" are the device's roster names, surfaced but never mapped.
@@ -270,7 +270,7 @@ describe('quirks of the real device export', () => {
 
   it('carries the vulgar-fraction half day through', () => {
     const result = parseNamedHeader([
-      { deviceId: '9', name: 'SEEMA BABY', days: { 20: { status: '\u00bdP', inTime: '07:55', outTime: '13:03' } } },
+      { deviceId: '9', name: 'LEELA ANTONY', days: { 20: { status: '\u00bdP', inTime: '07:55', outTime: '13:03' } } },
     ]);
     const day = result.employees[0].days.find((d) => d.day === 20)!;
     expect(day.statusRaw).toBe('\u00bdP');
@@ -281,7 +281,7 @@ describe('quirks of the real device export', () => {
     // 590 days in the real file punch out before they punch in. The parser
     // reports both clocks and leaves the spanning to the hours engine.
     const result = parseNamedHeader([
-      { deviceId: '2', name: 'BALKISHORE RAM', days: { 1: { status: 'P', inTime: '20:46', outTime: '07:16' } } },
+      { deviceId: '2', name: 'ARJUN MEHRA', days: { 1: { status: 'P', inTime: '20:46', outTime: '07:16' } } },
     ]);
     const day = result.employees[0].days.find((d) => d.day === 1)!;
     expect(day.inMinutes).toBe(20 * 60 + 46);

@@ -10,32 +10,91 @@ integration.
 
 ## Getting started
 
+**The payroll data lives in Supabase**, a hosted Postgres database - not in this
+repository and not on any one machine. Everyone who runs the app connects to the
+same database, so an employee added or a file uploaded on one PC is there on the
+other at the next refresh. Nothing to copy, nothing to keep in sync.
+
+You need [Node.js 22 or later](https://nodejs.org) and Git.
+
 ```bash
-npm install
-npx prisma db push      # creates prisma/payroll.db
-npm run db:seed         # creates one Admin account and nothing else
-npm run dev
+git clone https://github.com/christ0pper/SToughen.git
+cd SToughen
 ```
 
-The database starts empty. There are no sample employees and no sample
-attendance: everyone on the payroll arrives either from the Employees tab or
-from matching a block in your first real export. A sample employee that reaches
-production is a person nobody hired, being paid.
-
-Sign in at http://localhost:3000 as `123` / `123`. The username is matched as a
-plain string, so it does not have to be an email address.
-
-**`123` / `123` is a development convenience and nothing else.** Set a real
-credential before this holds anyone's pay, and before the machine is reachable
-on the network:
+**Create `.env` before installing - the order matters.** Prisma records where
+`.env` lives at the moment its client is generated, and `npm install` generates
+it. Install first and the app is built believing there is no `.env`, then fails
+with *"Environment variable not found: DATABASE_URL"* even once the file exists.
 
 ```bash
+cp .env.example .env          # Windows PowerShell:  Copy-Item .env.example .env
+```
+
+Open `.env` and fill in:
+
+- **`DATABASE_URL` and `DIRECT_URL`** - the two Supabase connection strings.
+  They contain the database password, so **they are not in this repository**:
+  ask for them privately (not in a chat that keeps history, not in an issue).
+  Anyone holding them can read and change every salary.
+- **`SESSION_SECRET`** - a random value of your own. This prints one:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
+
+Then install:
+
+```bash
+npm install
+npx prisma generate
+```
+
+If you already installed before creating `.env` and hit that error, run
+`npx prisma generate` again - that is the whole fix.
+
+Start it:
+
+```bash
+npm run build
+npm run start:lan              # or `npm run dev` while working on the code
+```
+
+Open http://localhost:3000 and sign in with the account already in the
+database. **The password is not in this repository** - ask for it privately,
+then create your own login under Settings → Accounts. Do **not** run
+`npm run db:seed`: there is already an account, and the seed refuses to add a
+default one. Do **not** run `npx prisma db push` either unless you changed
+`prisma/schema.prisma` - it edits the live database everyone is using.
+
+### Backups
+
+Supabase keeps daily backups on paid plans only (dashboard: Database →
+Backups). On the free plan nothing is backed up for you, so take your own before
+anything risky - a schema change, `npm run reset` - with `pg_dump` against
+`DIRECT_URL`.
+
+### After changing the schema
+
+`npx prisma db push` creates new tables through `DIRECT_URL`. Then run
+`npm run db:secure`: it switches on row-level security and removes access for
+Supabase's public API roles on every table, including the new one. The app
+connects as the database owner and is unaffected; the public API - reachable
+with the project's publishable key - sees nothing.
+
+### Starting a new install from nothing
+
+For a different company, create a new Supabase project, put its two connection
+strings in `.env` (Connect → ORMs → Prisma), then:
+
+```bash
+npx prisma db push
+npm run db:secure
 ADMIN_EMAIL=you@company.local ADMIN_PASSWORD='...' npm run db:seed
 ```
 
-Also set a real `SESSION_SECRET` in `.env` before this touches real data. More
-accounts are created in the app, under Settings → Accounts, where the 12-character
-minimum still applies.
+Sign-in accounts need at least 12 characters, set in the app under Settings →
+Accounts.
 
 ### Skipping sign-in while building
 
@@ -100,10 +159,11 @@ https — so no code change is needed when you do.
 |---|---|
 | `npm run dev` | Development server |
 | `npm run build` | Production build |
-| `npm test` | 93 tests over the calculation engine, parser and analytics |
+| `npm test` | 108 tests over the calculation engine, parser and analytics |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run db:seed` | Create the Admin account if it is missing |
 | `npm run db:studio` | Browse the database |
+| `npm run db:secure` | Lock every table against Supabase's public API - run after `prisma db push` |
 | `npm run reset -- --yes` | Delete every employee, period and audit entry, keeping accounts |
 | `npm run preflight` | Check nothing unsafe is switched on before pushing or deploying |
 | `npm run start:lan` | Production server, listening on the local network |
@@ -111,12 +171,13 @@ https — so no code change is needed when you do.
 | `npm run smoke -- <export.xls>` | Parse → import → calculate → print, against a real export |
 | `npm run compare-grace -- <export.xls>` | Measure the review-queue impact of the two rounding readings |
 
-`smoke` and `reset` both write to whatever `DATABASE_URL` points at. Point them
-at a scratch copy, not live payroll:
+`smoke` and `reset` both write to whatever `DATABASE_URL` points at - by
+default, the live payroll database. Point them at a separate, empty Supabase
+project first:
 
 ```bash
-DATABASE_URL="file:./scratch.db" npx prisma db push
-DATABASE_URL="file:./scratch.db" npm run smoke -- "C:/exports/july.xls"
+DATABASE_URL="postgres://...scratch project..." DIRECT_URL="postgres://..." npx prisma db push
+DATABASE_URL="postgres://...scratch project..." npm run smoke -- "C:/exports/july.xls"
 ```
 
 ## Architecture
@@ -233,13 +294,14 @@ already, and they are still drawn on white.
 
 ## Stack
 
-Next.js 15 · TypeScript · SQLite via Prisma · SheetJS · pdfmake · Vitest.
+Next.js 15 · TypeScript · Postgres (Supabase) via Prisma · SheetJS · pdfmake · Vitest.
 
-SQLite is deliberate: one company, ~110 employees, one batch a month, and a
-requirement to keep history indefinitely. The whole database is one file, so
-backup is a file copy. Moving to Postgres is a `provider` change in
-`prisma/schema.prisma` plus a migration — no application code depends on the
-engine.
+It started on SQLite - one company, ~110 employees, one batch a month - and
+moved to Supabase once two people in different places needed the same live
+data. The schema has no engine-specific types, so the move was the `provider`
+line in `prisma/schema.prisma` and a data copy; no application code changed.
+The app talks to the database only through Prisma, not supabase-js, and uses no
+Supabase Auth: accounts and sessions are its own.
 
 ## What is built
 
@@ -362,5 +424,3 @@ found three more that the build and typecheck both passed: formatter functions
 being passed across the server/client boundary (which broke every chart at
 runtime), exception roles reporting 0% punctuality instead of "not applicable",
 and axis ticks reading 38 / 75 / 113.
-#   S T o u g h e n  
- 

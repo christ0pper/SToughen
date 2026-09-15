@@ -2,7 +2,8 @@
 
 import { createHash } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
-import { db, dbReady } from '@/lib/db';
+import { redirect } from 'next/navigation';
+import { db } from '@/lib/db';
 import { fail, ok, type ActionState } from '@/lib/actionResult';
 import { recordAudit, recordFieldChanges } from '@/lib/audit';
 import { requireAdmin, requireUser } from '@/lib/auth';
@@ -10,8 +11,10 @@ import { daysInMonth, makeDate } from '@/domain/time';
 import { parseBiometricWorkbook } from '@/import/parseBiometricXls';
 import { applyUnmatchedBlock, importParsedWorkbook } from '@/services/importService';
 import { calculatePeriod } from '@/services/payrollService';
+import { periodLabel } from '@/lib/format';
 import {
   assertPeriodEditable,
+  deletePeriod,
   getOrCreatePeriod,
   lockPeriod,
   reopenPeriod,
@@ -116,7 +119,6 @@ export async function recalculateAction(
   formData: FormData,
 ): Promise<ActionState> {
   try {
-    await dbReady;
     const user = await requireUser();
     const periodId = String(formData.get('periodId'));
     await assertPeriodEditable(periodId);
@@ -163,6 +165,34 @@ export async function reopenPeriodAction(
   } catch (error) {
     return fail(error);
   }
+}
+
+export async function deletePeriodAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  try {
+    const user = await requireAdmin();
+    const periodId = String(formData.get('periodId'));
+    const period = await db.payrollPeriod.findUnique({ where: { id: periodId } });
+    if (!period) return { error: 'That period no longer exists.' };
+
+    // Typing the month is the difference between meaning it and a stray click
+    // on the wrong period - there is no undo.
+    const expected = periodLabel(period.year, period.month);
+    const typed = String(formData.get('confirmLabel') ?? '').trim();
+    if (typed.toLowerCase() !== expected.toLowerCase()) {
+      return { error: `Type "${expected}" exactly to confirm.` };
+    }
+
+    await deletePeriod(periodId, user.id);
+    revalidatePath('/periods');
+    revalidatePath('/dashboard');
+  } catch (error) {
+    return fail(error);
+  }
+  // Outside the try: redirect works by throwing, and fail() would swallow it.
+  redirect('/periods');
 }
 
 export async function resolveDayAction(

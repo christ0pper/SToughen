@@ -107,8 +107,8 @@ export async function destroySession(): Promise<void> {
  *
  * Name and role are read back from the database too, so a change to either
  * applies immediately rather than at next sign-in. That is one indexed lookup
- * by primary key per request against a local SQLite file holding a handful of
- * accounts - far cheaper than either of the bugs above.
+ * by primary key per request against a table holding a handful of accounts -
+ * a round trip to Supabase, and still far cheaper than either of the bugs above.
  */
 export async function getSession(): Promise<SessionUser | null> {
   if (authBypassEnabled()) {

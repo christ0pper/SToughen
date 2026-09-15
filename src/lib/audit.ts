@@ -13,6 +13,7 @@ export type AuditAction =
   | 'PERIOD_LOCK'
   | 'PERIOD_REOPEN'
   | 'PERIOD_RECALCULATE'
+  | 'PERIOD_DELETE'
   | 'IMPORT'
   | 'FIELD_UPDATE'
   | 'RESOLVE_FLAG'

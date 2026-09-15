@@ -4,8 +4,18 @@ out/
 *.log
 .env
 .env.local
-prisma/*.db
-prisma/*.db-journal
+# --- databases ---------------------------------------------------------------
+# Payroll data lives in Supabase. No database file belongs in this repo: a local
+# copy or backup holds names, pay and password hashes. A SQLite -wal file was
+# pushed by mistake once, back when the app ran on SQLite.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
 uploads/
 coverage/
 *.tsbuildinfo

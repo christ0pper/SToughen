@@ -10,7 +10,7 @@
  * resolutions already recorded against a day are left untouched.
  */
 
-import { db, dbReady } from '@/lib/db';
+import { db } from '@/lib/db';
 import { recordAudit } from '@/lib/audit';
 import { daysInMonth, isoDate, makeDate } from '@/domain/time';
 import type { ParseResult, ParsedDay, ParsedEmployeeBlock } from '@/import/parseBiometricXls';
@@ -61,10 +61,6 @@ export class PeriodLockedError extends Error {
 }
 
 export async function importParsedWorkbook(options: ImportOptions): Promise<ImportSummary> {
-  // Thousands of rows are about to be written; make sure the connection is in
-  // WAL before the first one rather than after.
-  await dbReady;
-
   const { year, month, parsed, userId } = options;
   const warnings = [...parsed.warnings];
 

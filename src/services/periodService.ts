@@ -125,6 +125,61 @@ export async function reopenPeriod(
   });
 }
 
+export interface DeletedPeriodSummary {
+  year: number;
+  month: number;
+  attendanceDays: number;
+  payrollLines: number;
+  imports: number;
+  auditEntries: number;
+}
+
+/**
+ * Deletes a month's payroll outright: its imports, attendance, review queues,
+ * bonuses, one-off deductions, calculated lines and its audit trail. Employees,
+ * their rates and recurring deductions are not touched - they belong to people,
+ * not to a month - so the month can be started again from a fresh upload.
+ *
+ * A locked period is approved payroll and has to be reopened first, which puts
+ * a reason on record before anything can be removed.
+ */
+export async function deletePeriod(periodId: string, userId: string): Promise<DeletedPeriodSummary> {
+  const period = await db.payrollPeriod.findUniqueOrThrow({ where: { id: periodId } });
+  if (period.status === 'LOCKED') {
+    throw new PeriodLockedError('This period is approved and locked. Reopen it before deleting it.');
+  }
+
+  const [attendanceDays, payrollLines, imports, auditEntries] = await Promise.all([
+    db.attendanceDay.count({ where: { periodId } }),
+    db.payrollLine.count({ where: { periodId } }),
+    db.importBatch.count({ where: { periodId } }),
+    db.auditLog.count({ where: { periodId } }),
+  ]);
+
+  // Every other table cascades from the period. Audit entries only point at it
+  // optionally, so they would survive with the link cleared - delete them first.
+  await db.$transaction([
+    db.auditLog.deleteMany({ where: { periodId } }),
+    db.payrollPeriod.delete({ where: { id: periodId } }),
+  ]);
+
+  const summary = { year: period.year, month: period.month, attendanceDays, payrollLines, imports, auditEntries };
+
+  // One line outside the deleted trail, so it is still visible that a month
+  // existed and who removed it.
+  await recordAudit({
+    userId,
+    action: 'PERIOD_DELETE',
+    entityType: 'PayrollPeriod',
+    entityId: periodId,
+    periodId: null,
+    oldValue: `${period.month}/${period.year} (${period.status})`,
+    newValue: summary,
+  });
+
+  return summary;
+}
+
 export async function getOrCreatePeriod(year: number, month: number, userId: string | null) {
   const existing = await db.payrollPeriod.findUnique({ where: { year_month: { year, month } } });
   if (existing) return existing;

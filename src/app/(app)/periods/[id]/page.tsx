@@ -7,6 +7,7 @@ import { dateTime, hours, periodLabel, rupees, scheduleName, shortDate } from '@
 import { ActionForm } from '@/components/ActionForm';
 import { FlaggedDayCard } from '@/components/period/FlaggedDayCard';
 import {
+  deletePeriodAction,
   lockPeriodAction,
   recalculateAction,
   reopenPeriodAction,
@@ -657,6 +658,46 @@ export default async function PeriodPage({ params }: { params: Promise<{ id: str
           </div>
         )}
       </section>
+
+      {/* delete ----------------------------------------------------------- */}
+      {admin ? (
+        <section className="card border-red-200">
+          <div className="card-head">
+            <h2 className="card-title">Delete this month&apos;s payroll</h2>
+            <span className="text-xs text-ink-soft">Admin only · cannot be undone</span>
+          </div>
+          <div className="px-5 pb-5">
+            {locked ? (
+              <p className="text-sm text-ink-soft">
+                This month is approved and locked. Reopen it above before it can be deleted.
+              </p>
+            ) : (
+              <ActionForm
+                action={deletePeriodAction}
+                hidden={{ periodId: id }}
+                submitLabel={`Delete ${periodLabel(period.year, period.month)}`}
+                pendingLabel="Deleting…"
+                variant="danger"
+                confirm={`Permanently delete the ${periodLabel(period.year, period.month)} payroll? This cannot be undone.`}
+              >
+                <p className="mb-3 max-w-2xl text-sm text-ink-soft">
+                  Removes the imported attendance, both review queues, flagged-day decisions, bonuses,
+                  one-off deductions, the calculated payroll ({lines.length} line(s)) and this
+                  month&apos;s audit trail. Employees, their hourly rates and monthly salaries, and
+                  recurring deductions are kept, so the month can be started again from a fresh
+                  upload.
+                </p>
+                <div className="mb-3 max-w-xs">
+                  <label className="label" htmlFor="confirmLabel">
+                    Type <strong>{periodLabel(period.year, period.month)}</strong> to confirm
+                  </label>
+                  <input id="confirmLabel" name="confirmLabel" className="input" autoComplete="off" required />
+                </div>
+              </ActionForm>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       <p className="pb-8 text-xs text-ink-muted">
         Period {periodLabel(period.year, period.month)} · created {shortDate(period.createdAt)}

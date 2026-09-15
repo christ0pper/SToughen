@@ -2,6 +2,9 @@
   "name": "memeos-payroll",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "scripts": {
     "dev": "next dev",
@@ -20,8 +23,6 @@
     "compare-grace": "tsx scripts/compareGrace.ts",
     "reset": "tsx scripts/reset.ts",
     "preflight": "tsx scripts/preflight.ts",
-    "db:use": "tsx scripts/use-db.ts",
-    "db:copy": "node --no-warnings --import tsx scripts/copy-data.ts",
     "db:secure": "tsx scripts/secure-supabase.ts"
   },
   "dependencies": {
