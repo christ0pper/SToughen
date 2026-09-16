@@ -63,7 +63,7 @@ export default function LoginPage() {
           </div>
 
           {state.error ? (
-            <p className="alert alert-bad mt-4">
+            <p className="alert alert-bad mt-4 whitespace-pre-line" role="alert">
               {state.error}
             </p>
           ) : null}

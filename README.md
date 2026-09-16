@@ -67,6 +67,32 @@ then create your own login under Settings → Accounts. Do **not** run
 default one. Do **not** run `npx prisma db push` either unless you changed
 `prisma/schema.prisma` - it edits the live database everyone is using.
 
+### Hosting it (Vercel)
+
+`.env` is never committed, so a hosted deployment has none of it. Set these in
+the host's dashboard - on Vercel, Settings → Environment Variables - and then
+**redeploy**, because settings only reach a new deployment:
+
+| Setting | Value |
+|---|---|
+| `DATABASE_URL` | The session-pooler string, with `?connection_limit=1` |
+| `DIRECT_URL` | The same string without the parameter |
+| `SESSION_SECRET` | Its own random value, not the one from your laptop |
+
+Paste the values **without quotation marks** - a string copied out of `.env`
+keeps them, and the database driver then rejects it.
+
+Use `connection_limit=1` on a hosted deployment, not the 5 a single office PC
+uses: the host runs many copies of the app at once, each opening its own
+connections, and Supabase's pooler has a fixed limit.
+
+`vercel.json` pins the app to Singapore (`sin1`), beside the database. Running
+it elsewhere means every query crosses an ocean - the same page measured 28
+seconds from Washington against 3.5 seconds beside the database.
+
+If a setting is missing or malformed, the sign-in screen says which one rather
+than failing blankly.
+
 ### Backups
 
 Supabase keeps daily backups on paid plans only (dashboard: Database →

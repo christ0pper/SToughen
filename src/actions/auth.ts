@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { authenticate, createSession, destroySession } from '@/lib/auth';
+import { describeSignInFailure } from '@/lib/configCheck';
 
 export interface FormState {
   error?: string;
@@ -14,10 +15,20 @@ export async function signIn(_prev: FormState, formData: FormData): Promise<Form
 
   if (!email || !password) return { error: 'Enter your email and password.' };
 
-  const user = await authenticate(email, password);
-  if (!user) return { error: 'Those credentials were not recognised.' };
+  let user;
+  try {
+    user = await authenticate(email, password);
+    if (!user) return { error: 'Those credentials were not recognised.' };
+    await createSession(user);
+  } catch (error) {
+    // Without this the browser gets a bare 500 and the person at the keyboard
+    // is told nothing at all - see lib/configCheck.
+    console.error('[signIn] failed', error);
+    return { error: describeSignInFailure(error) };
+  }
 
-  await createSession(user);
+  // Outside the try: redirect works by throwing, and the catch above would
+  // report it as a sign-in failure.
   redirect('/periods');
 }
 
