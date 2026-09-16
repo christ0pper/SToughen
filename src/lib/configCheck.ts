@@ -55,8 +55,8 @@ export function describeSignInFailure(error: unknown): string {
   if (/P1001|Can't reach database server|ETIMEDOUT|ECONNREFUSED/i.test(text)) {
     return 'The database did not answer. It may be paused in Supabase, or the address in DATABASE_URL may be wrong.';
   }
-  if (/Max client connections reached|too many connections|P2037/i.test(text)) {
-    return 'The database is out of free connections. Lower connection_limit in DATABASE_URL, or wait a moment and try again.';
+  if (/max clients reached|Max client connections reached|too many connections|P2037|EMAXCONN/i.test(text)) {
+    return 'The database has no connections free. Supabase allows 15 at once on the session pooler (port 5432); the transaction pooler (port 6543, with pgbouncer=true) shares them instead and is what a hosted deployment should use in DATABASE_URL.';
   }
   if (/Query Engine|libquery_engine|PrismaClientInitializationError/i.test(text)) {
     return 'The database client failed to start on the server. The deployment log has the detail.';

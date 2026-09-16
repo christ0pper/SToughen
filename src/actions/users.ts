@@ -21,6 +21,23 @@ function checkPassword(password: string, confirm: string): string | null {
   return null;
 }
 
+/**
+ * Sign-in names are usernames, not email addresses.
+ *
+ * The column is called `email` and once demanded an "@". Nothing else in the
+ * app agrees: the sign-in screen asks for a Username, the bootstrap account is
+ * `admin`, and the seed says outright that it need not be an address. The
+ * effect was that no plain username could be created, and the one account that
+ * already existed could not even have its name corrected - saving the form
+ * failed on its own username. So the rule matches what is actually used.
+ */
+function checkUsername(username: string): string | null {
+  if (!username) return 'Enter a username.';
+  if (username.length < 3) return 'A username needs at least 3 characters.';
+  if (/\s/.test(username)) return 'A username cannot contain spaces.';
+  return null;
+}
+
 export async function createUserAction(
   _prev: ActionState,
   formData: FormData,
@@ -34,7 +51,8 @@ export async function createUserAction(
     const password = String(formData.get('password') ?? '');
     const confirm = String(formData.get('confirm') ?? '');
 
-    if (!email || !email.includes('@')) return { error: 'Enter a valid email address.' };
+    const usernameProblem = checkUsername(email);
+    if (usernameProblem) return { error: usernameProblem };
     if (!name) return { error: 'Enter a name.' };
     if (!['ADMIN', 'HR_ACCOUNTANT'].includes(role)) return { error: 'Choose a role.' };
 
@@ -190,7 +208,8 @@ export async function updateUserAction(
     const role = String(formData.get('role') ?? before.role);
 
     if (!name) return { error: 'Enter a name.' };
-    if (!email || !email.includes('@')) return { error: 'Enter a valid email address.' };
+    const usernameProblem = checkUsername(email);
+    if (usernameProblem) return { error: usernameProblem };
     if (!['ADMIN', 'HR_ACCOUNTANT'].includes(role)) return { error: 'Choose a role.' };
 
     if (email !== before.email) {

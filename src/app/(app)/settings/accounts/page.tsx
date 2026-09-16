@@ -71,10 +71,11 @@ export default async function AccountsSettingsPage() {
                       <input name="name" className="input" defaultValue={account.name} required />
                     </div>
                     <div>
-                      <label className="label">Email</label>
+                      <label className="label">Username</label>
                       <input
                         name="email"
-                        type="email"
+                        type="text"
+                        autoComplete="username"
                         className="input"
                         defaultValue={account.email}
                         required
@@ -150,8 +151,8 @@ export default async function AccountsSettingsPage() {
                   <input name="name" className="input" required />
                 </div>
                 <div>
-                  <label className="label">Email</label>
-                  <input name="email" type="email" className="input" required />
+                  <label className="label">Username</label>
+                  <input name="email" type="text" autoComplete="username" className="input" required />
                 </div>
                 <div>
                   <label className="label">Role</label>

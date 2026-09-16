@@ -75,16 +75,20 @@ the host's dashboard - on Vercel, Settings → Environment Variables - and then
 
 | Setting | Value |
 |---|---|
-| `DATABASE_URL` | The session-pooler string, with `?connection_limit=1` |
-| `DIRECT_URL` | The same string without the parameter |
+| `DATABASE_URL` | The **transaction** pooler string - port 6543, ending `?pgbouncer=true&connection_limit=1` |
+| `DIRECT_URL` | The session pooler string - port 5432, no parameters |
 | `SESSION_SECRET` | Its own random value, not the one from your laptop |
 
 Paste the values **without quotation marks** - a string copied out of `.env`
 keeps them, and the database driver then rejects it.
 
-Use `connection_limit=1` on a hosted deployment, not the 5 a single office PC
-uses: the host runs many copies of the app at once, each opening its own
-connections, and Supabase's pooler has a fixed limit.
+Port 6543, not 5432, and this is the one that bites. Session mode (5432) gives
+every copy of the app its own database connection and holds it; Supabase allows
+15 at once, a host runs many copies, and once they are used up *everything* is
+refused - the site, a laptop, a backup - with "max clients reached in session
+mode". Transaction mode shares connections between statements instead. The app
+moves a session-mode URL to 6543 by itself when it detects a serverless host
+(`src/lib/db.ts`), but setting it correctly here is better than relying on that.
 
 `vercel.json` pins the app to Singapore (`sin1`), beside the database. Running
 it elsewhere means every query crosses an ocean - the same page measured 28

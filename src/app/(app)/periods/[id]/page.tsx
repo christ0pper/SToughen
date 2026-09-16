@@ -21,8 +21,15 @@ export const dynamic = 'force-dynamic';
 
 const FLAGGED_PAGE_SIZE = 40;
 
-export default async function PeriodPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PeriodPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ flagged?: string }>;
+}) {
   const { id } = await params;
+  const flaggedPage = Math.max(1, Number((await searchParams).flagged ?? 1) || 1);
   const user = await getSession();
 
   const period = await db.payrollPeriod.findUnique({
@@ -62,6 +69,14 @@ export default async function PeriodPage({ params }: { params: Promise<{ id: str
     db.employee.count({ where: { scheduleType: 'EXCEPTION', status: { not: 'INACTIVE' } } }),
   ]);
 
+  // Paged, not truncated: a resolution removes a row from the queue, so the
+  // page a person is on shrinks under them - clamping keeps them on the last
+  // real page rather than on an empty one.
+  const flaggedPageCount = Math.max(1, Math.ceil(flagged.length / FLAGGED_PAGE_SIZE));
+  const flaggedSafePage = Math.min(flaggedPage, flaggedPageCount);
+  const flaggedFrom = (flaggedSafePage - 1) * FLAGGED_PAGE_SIZE;
+  const flaggedShown = flagged.slice(flaggedFrom, flaggedFrom + FLAGGED_PAGE_SIZE);
+
   const inPayroll = lines.filter((line) => line.inPayroll);
   const notInPayroll = lines.filter((line) => !line.inPayroll);
   const totalFinal = inPayroll.reduce((sum, line) => sum + line.finalPay, 0);
@@ -98,8 +113,10 @@ export default async function PeriodPage({ params }: { params: Promise<{ id: str
               {locked ? 'Locked' : 'Draft'}
             </span>
             {period.lockedAt ? (
+              // Once reopened it is a draft again, so the old approval has to
+              // read as history - "Draft · Approved ..." says two things at once.
               <span className="ml-2">
-                Approved {dateTime(period.lockedAt)}
+                {locked ? 'Approved' : 'Previously approved'} {dateTime(period.lockedAt)}
                 {period.lockedBy?.name ? ` by ${period.lockedBy.name}` : ''}
               </span>
             ) : null}
@@ -411,12 +428,14 @@ export default async function PeriodPage({ params }: { params: Promise<{ id: str
       </section>
 
       {/* flagged days ----------------------------------------------------- */}
-      <section className="card">
+      <section className="card" id="flagged">
         <div className="card-head">
           <h2 className="card-title">6 · Flagged days</h2>
           <span className="text-xs text-ink-soft">
             {flagged.length} unresolved
-            {flagged.length > FLAGGED_PAGE_SIZE ? ` · showing the first ${FLAGGED_PAGE_SIZE}` : ''}
+            {flaggedPageCount > 1
+              ? ` · showing ${flaggedFrom + 1}-${flaggedFrom + flaggedShown.length}`
+              : ''}
           </span>
         </div>
         {flagged.length === 0 ? (
@@ -424,11 +443,56 @@ export default async function PeriodPage({ params }: { params: Promise<{ id: str
             Every day either matches the standard 8 hours or has been resolved.
           </p>
         ) : (
-          <div className="space-y-3 p-4">
-            {flagged.slice(0, FLAGGED_PAGE_SIZE).map((row) => (
-              <FlaggedDayCard key={row.attendanceDayId} row={row} disabled={locked} />
-            ))}
-          </div>
+          <>
+            <div className="space-y-3 p-4">
+              {flaggedShown.map((row) => (
+                <FlaggedDayCard key={row.attendanceDayId} row={row} disabled={locked} />
+              ))}
+            </div>
+            {/* A month of a full workforce runs to hundreds of these, and every
+                one has to be reachable - resolving forty to see the next forty
+                is not a way to work through a queue. */}
+            {flaggedPageCount > 1 ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline px-5 py-3">
+                <span className="text-xs text-ink-soft">
+                  Page {flaggedSafePage} of {flaggedPageCount}
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {flaggedSafePage > 1 ? (
+                    <Link className="btn" href={`/periods/${id}?flagged=${flaggedSafePage - 1}#flagged`}>
+                      Previous
+                    </Link>
+                  ) : null}
+                  {Array.from({ length: flaggedPageCount }, (_, index) => index + 1)
+                    .filter(
+                      (page) =>
+                        page === 1 ||
+                        page === flaggedPageCount ||
+                        Math.abs(page - flaggedSafePage) <= 2,
+                    )
+                    .map((page, index, pages) => (
+                      <span key={page} className="flex items-center gap-2">
+                        {index > 0 && page - pages[index - 1] > 1 ? (
+                          <span className="text-xs text-ink-muted">…</span>
+                        ) : null}
+                        <Link
+                          className={page === flaggedSafePage ? 'btn btn-primary' : 'btn'}
+                          href={`/periods/${id}?flagged=${page}#flagged`}
+                          aria-current={page === flaggedSafePage ? 'page' : undefined}
+                        >
+                          {page}
+                        </Link>
+                      </span>
+                    ))}
+                  {flaggedSafePage < flaggedPageCount ? (
+                    <Link className="btn" href={`/periods/${id}?flagged=${flaggedSafePage + 1}#flagged`}>
+                      Next
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </>
         )}
       </section>
 
